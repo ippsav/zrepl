@@ -31,5 +31,7 @@ pub fn ripgrep_term(term: []const u8, allocator: std.mem.Allocator) ![]const u8 
         if (size < buf.len) break;
     }
 
+    try buffered_writer.flush();
+
     return try result.toOwnedSlice();
 }
