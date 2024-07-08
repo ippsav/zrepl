@@ -3,6 +3,7 @@ const vaxis = @import("vaxis");
 const TextInput = vaxis.widgets.TextInput;
 const Event = @import("app.zig").Event;
 const log = std.log.scoped(.result_view);
+const State = @import("app.zig").State;
 
 const Segment = vaxis.Segment;
 
@@ -39,38 +40,34 @@ pub const ResultView = struct {
     pub fn add_result_view_component(
         result_view: *ResultView,
         parent: vaxis.Window,
-        result: []const u8,
+        app_state: *const State,
         opts: vaxis.Window.ChildOptions,
         allocator: std.mem.Allocator,
     ) !vaxis.Window {
         const child = parent.child(opts);
+        // if (result.len == 0) return child;
+        // if (app_state)
 
-        var lines = std.mem.splitScalar(u8, result, '\n');
+        const mapped_result = app_state.search_result;
+
+        // const result = rg_begin.value.data.path.text;
+        var value_iterator = mapped_result.valueIterator();
 
         var row_offset: usize = 1;
-        var line_number: usize = 1;
 
-        while (lines.next()) |line| {
-            defer line_number += 1;
+        while (value_iterator.next()) |value| {
+            for (value.*) |result| {
+                const line_number_str = try std.fmt.allocPrint(allocator, "{d}: ", .{result.line_number});
+                try result_view.line_numbers.append(allocator, line_number_str);
 
-            const line_number_str = try std.fmt.allocPrint(allocator, "{d}: ", .{line_number});
-            try result_view.line_numbers.append(allocator, line_number_str);
+                print_line_number(&child, line_number_str, row_offset);
 
-            // const line_number_segment = Segment{
-            //     .text = line_number_str,
-            // };
-            //
-            // _ = try child.printSegment(line_number_segment, .{
-            //     .col_offset = 5,
-            //     .row_offset = row_offset,
-            // });
-            print_line_number(&child, line_number_str, row_offset);
-
-            row_offset += try print_line(
-                &child,
-                line,
-                row_offset,
-            );
+                row_offset += try print_line(
+                    &child,
+                    result.text,
+                    row_offset,
+                );
+            }
         }
 
         return child;

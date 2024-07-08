@@ -15,6 +15,6 @@ pub fn main() !void {
 
     var app = try App.init(alloc);
     defer app.deinit();
-    errdefer app.deinit();
+
     try app.start();
 }

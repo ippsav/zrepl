@@ -28,13 +28,24 @@ const ActiveComponent = enum {
     search_input,
 };
 
-const State = struct {
+pub const State = struct {
     current_search_term: []const u8 = "",
-    search_result: []const u8 = "",
+    search_result: std.StringHashMapUnmanaged([]const ripgrep.RgResult) = .{},
 
     pub fn deinit(state: *State, allocator: std.mem.Allocator) void {
         allocator.free(state.current_search_term);
-        allocator.free(state.search_result);
+        state.clear_search_result(allocator);
+        state.search_result.deinit(allocator);
+    }
+
+    pub fn clear_search_result(state: *State, allocator: std.mem.Allocator) void {
+        var it = state.search_result.iterator();
+        while (it.next()) |kv| {
+            allocator.free(kv.key_ptr.*);
+            for (kv.value_ptr.*) |*result| {
+                result.deinit(allocator);
+            }
+        }
     }
 };
 
@@ -73,6 +84,7 @@ pub const App = struct {
         // Components
         const header_component = header.Header{};
         var sidebar_component = sidebar.Sidebar{};
+
         var search_input_component = search_input.SearchInput.init(app.allocator, &app.vx.unicode);
         defer search_input_component.deinit();
 
@@ -88,16 +100,17 @@ pub const App = struct {
                     try app.vx.resize(app.allocator, app.tty.anyWriter(), ws);
                 },
                 .dispatch_search => |str| {
-                    app.allocator.free(app.state.search_result);
+                    app.state.clear_search_result(app.allocator);
                     app.allocator.free(app.state.current_search_term);
 
                     app.state.current_search_term = str;
 
-                    // app.event_loop.stop();
-                    const result = try ripgrep.ripgrep_term(app.state.current_search_term, app.allocator);
-                    // try app.event_loop.start();
-
-                    app.state.search_result = result;
+                    if (str.len != 0) {
+                        app.event_loop.stop();
+                        const result = try ripgrep.ripgrep_term(app.state.current_search_term, app.allocator);
+                        try app.event_loop.start();
+                        try ripgrep.parse_ripgrep_result(result, &app.state.search_result, app.allocator);
+                    }
                 },
                 else => {
                     switch (app.active_component) {
@@ -123,8 +136,6 @@ pub const App = struct {
                     .y_off = header_child.height,
                 },
             );
-            std.debug.print("sidebar width: {d}\n", .{sidebar_child.width});
-            std.debug.print("win width: {d}\n", .{win.width});
             win.writeCell(sidebar_child.width - 1, header_child.height - 1, intersection);
 
             const search_input_child = try search_input_component.add_search_input_component(sidebar_child, .{
@@ -134,24 +145,23 @@ pub const App = struct {
                 .border = .{
                     .where = .all,
                     .style = .{
-                        .fg = .{ .rgb = .{ 255, 255, 255 } },
+                        .fg = .{
+                            .rgb = .{ 255, 255, 255 },
+                        },
                     },
                 },
             });
             _ = search_input_child;
 
-            if (!std.mem.eql(u8, app.state.current_search_term, "")) {
-                const result_view_child = try result_view_component.add_result_view_component(
-                    win,
-                    app.state.search_result,
-                    .{
-                        .x_off = sidebar_child.width + 1,
-                        .y_off = header_child.height,
-                    },
-                    app.allocator,
-                );
-                _ = result_view_child;
-            }
+            _ = try result_view_component.add_result_view_component(
+                win,
+                &app.state,
+                .{
+                    .x_off = sidebar_child.width + 1,
+                    .y_off = header_child.height,
+                },
+                app.allocator,
+            );
             defer result_view_component.clear_allocated_lines(app.allocator);
 
             // Render the screen
