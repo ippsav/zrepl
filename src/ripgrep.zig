@@ -167,6 +167,9 @@ pub fn parse_ripgrep_result(result: []const u8, map: *std.StringHashMapUnmanaged
                     if (prev_step == .end_step) {
                         curr_step = .summary_step;
                         continue;
+                    } else if (prev_step == .begin_step) {
+                        curr_step = .summary_step;
+                        continue;
                     }
                     return err;
                 };
