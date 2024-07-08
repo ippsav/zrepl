@@ -39,6 +39,7 @@ pub const State = struct {
     }
 
     pub fn clear_search_result(state: *State, allocator: std.mem.Allocator) void {
+        defer state.search_result.clearAndFree(allocator);
         var it = state.search_result.iterator();
         while (it.next()) |kv| {
             allocator.free(kv.key_ptr.*);
@@ -100,7 +101,7 @@ pub const App = struct {
                     try app.vx.resize(app.allocator, app.tty.anyWriter(), ws);
                 },
                 .dispatch_search => |str| {
-                    app.state.clear_search_result(app.allocator);
+                    if (app.state.search_result.size > 0) app.state.clear_search_result(app.allocator);
                     app.allocator.free(app.state.current_search_term);
 
                     app.state.current_search_term = str;
