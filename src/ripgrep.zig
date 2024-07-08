@@ -156,10 +156,6 @@ pub fn parse_ripgrep_result(result: []const u8, map: *std.StringHashMapUnmanaged
     var def: usize = 0;
     while (lines.peek()) |peeked_line| {
         def += 1;
-        std.debug.print("{d}: {s}\n", .{ def, peeked_line });
-        defer std.debug.print("end\n", .{});
-        std.debug.print("curr step: {any}\n", .{curr_step});
-        std.debug.print("prev step: {any}\n", .{prev_step});
         switch (curr_step) {
             .begin_step => {
                 const begin = json.parseFromSlice(RgBegin, allocator, peeked_line, .{}) catch |err| {
@@ -180,7 +176,6 @@ pub fn parse_ripgrep_result(result: []const u8, map: *std.StringHashMapUnmanaged
             },
             .match_step => {
                 const match = json.parseFromSlice(RgMatch, allocator, peeked_line, .{}) catch |err| {
-                    std.debug.print("match error: {any}\n", .{err});
                     if (err == error.UnknownField) {
                         if (prev_step == .begin_step) return error.UnexpectedRgValue;
                         if (prev_step == .match_step) {
@@ -241,6 +236,7 @@ pub fn parse_ripgrep_result(result: []const u8, map: *std.StringHashMapUnmanaged
         _ = lines.next();
     }
 }
+// Example of a query
 // {"type":"begin","data":{"path":{"text":"src/result_view.zig"}}}
 // {"type":"match","data":{"path":{"text":"src/result_view.zig"},"lines":{"text":"        var remaining = str[0..str.len];\n"},"line_number":97,"absolute_offset":3005,"submatches":[{"match":{"text":"main"},"start":14,"end":18}]}}
 // {"type":"match","data":{"path":{"text":"src/result_view.zig"},"lines":{"text":"        while (remaining.len > 0) {\n"},"line_number":100,"absolute_offset":3085,"submatches":[{"match":{"text":"main"},"start":17,"end":21}]}}
