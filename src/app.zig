@@ -46,6 +46,7 @@ pub const State = struct {
             for (kv.value_ptr.*) |*result| {
                 result.deinit(allocator);
             }
+            allocator.free(kv.value_ptr.*);
         }
     }
 };
@@ -109,6 +110,7 @@ pub const App = struct {
                     if (str.len != 0) {
                         app.event_loop.stop();
                         const result = try ripgrep.ripgrep_term(app.state.current_search_term, app.allocator);
+                        defer app.allocator.free(result);
                         try app.event_loop.start();
                         try ripgrep.parse_ripgrep_result(result, &app.state.search_result, app.allocator);
                     }
