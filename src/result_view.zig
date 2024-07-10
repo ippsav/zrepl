@@ -2,10 +2,14 @@ const std = @import("std");
 const vaxis = @import("vaxis");
 const TextInput = vaxis.widgets.TextInput;
 const Event = @import("app.zig").Event;
-const log = std.log.scoped(.result_view);
 const State = @import("app.zig").State;
+const rg = @import("ripgrep.zig");
+const RgResult = rg.RgResult;
+const Submatch = rg.Submatch;
 
 const Segment = vaxis.Segment;
+
+const log = std.log.scoped(.result_view);
 
 pub const ResultView = struct {
 
@@ -64,8 +68,9 @@ pub const ResultView = struct {
 
                 row_offset += try print_line(
                     &child,
-                    result.text,
+                    &result,
                     row_offset,
+                    allocator,
                 );
             }
         }
@@ -89,27 +94,43 @@ pub const ResultView = struct {
 
     fn print_line(
         container: *const vaxis.Window,
-        str: []const u8,
+        result: *const RgResult,
         offset: usize,
+        allocator: std.mem.Allocator,
     ) !usize {
-        var remaining = str[0..str.len];
+        var text = result.text;
+        var line_len: usize = @min(text.len, container.width - 15);
+        var str_offset: usize = 0;
         var lines_written: usize = 0;
+        var submatches_offset: usize = 0;
 
-        while (remaining.len > 0) {
-            const line_len: usize = @min(remaining.len, container.width - 15);
+        var segments = std.ArrayList(Segment).init(allocator);
+        defer segments.deinit();
+
+        while (str_offset < text.len) {
             defer {
                 lines_written += 1;
-                remaining = remaining[line_len..];
+                str_offset += line_len;
+                line_len = @min(text[line_len..].len, container.width - 15);
+                segments.clearRetainingCapacity();
             }
 
-            const segment = Segment{
-                .text = remaining[0..line_len],
-            };
+            submatches_offset = try populate_segments(
+                &segments,
+                result.submatches[submatches_offset..],
+                text,
+                str_offset,
+                str_offset + line_len,
+            );
 
-            _ = try container.printSegment(segment, .{
-                .col_offset = 10,
-                .row_offset = offset + lines_written,
-            });
+            var col_offset: usize = 10;
+            for (segments.items) |segment| {
+                _ = try container.printSegment(segment, .{
+                    .col_offset = col_offset,
+                    .row_offset = offset + lines_written,
+                });
+                col_offset += segment.text.len;
+            }
         }
 
         const seperator = Segment{
@@ -124,5 +145,51 @@ pub const ResultView = struct {
         }
 
         return lines_written + 1;
+    }
+
+    fn populate_segments(
+        segments: *std.ArrayList(Segment),
+        submatches: []const Submatch,
+        str: []const u8,
+        offset: usize,
+        limit: usize,
+    ) !usize {
+        if (submatches.len == 0 or submatches[0].start >= limit) {
+            try segments.append(.{
+                .text = str[offset..limit],
+            });
+            return 0;
+        }
+
+        var last_end: usize = offset;
+        var submatch_found: usize = 0;
+
+        for (submatches) |submatch| {
+            if (submatch.start > limit) break;
+
+            if (submatch.start > last_end) {
+                try segments.append(.{
+                    .text = str[last_end..submatch.start],
+                });
+            }
+
+            try segments.append(.{
+                .text = str[submatch.start..submatch.end],
+                .style = .{
+                    .reverse = true,
+                },
+            });
+
+            submatch_found += 1;
+            last_end = submatch.end;
+        }
+
+        if (last_end < str.len) {
+            try segments.append(.{
+                .text = str[last_end..],
+            });
+        }
+
+        return submatch_found;
     }
 };

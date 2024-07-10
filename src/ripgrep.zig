@@ -91,30 +91,11 @@ pub fn ripgrep_term(term: []const u8, allocator: std.mem.Allocator) ![]const u8 
 
     _ = try child.spawn();
 
-    var result = std.ArrayList(u8).init(allocator);
-    defer result.deinit();
-
-    var buffered_writer = std.io.bufferedWriter(result.writer());
-
-    var buf: [4096]u8 = undefined;
-
     const reader = child.stdout.?.reader();
-
-    while (true) {
-        const size = try reader.read(&buf);
-
-        const bytes_write = try buffered_writer.write(buf[0..size]);
-        std.debug.assert(bytes_write == size);
-
-        if (size < buf.len) break;
-    }
-
-    try buffered_writer.flush();
-
-    return try result.toOwnedSlice();
+    return try reader.readAllAlloc(allocator, std.math.maxInt(u64));
 }
 
-pub const Submatches = struct {
+pub const Submatch = struct {
     match: struct {
         text: []const u8,
     },
@@ -126,13 +107,14 @@ pub const RgResult = struct {
     text: []const u8,
     absolute_offset: u64,
     line_number: u64,
-    submatches: []const Submatches,
+    submatches: []const Submatch,
 
     pub fn deinit(result: RgResult, allocator: std.mem.Allocator) void {
         allocator.free(result.text);
         for (result.submatches) |submatch| {
             allocator.free(submatch.match.text);
         }
+        allocator.free(result.submatches);
     }
 };
 
@@ -190,7 +172,7 @@ pub fn parse_ripgrep_result(result: []const u8, map: *std.StringHashMapUnmanaged
                     prev_step = .match_step;
                 }
                 const text = try allocator.dupe(u8, match.value.data.lines.text);
-                const submatches = try allocator.alloc(Submatches, match.value.data.submatches.len);
+                const submatches = try allocator.alloc(Submatch, match.value.data.submatches.len);
                 for (match.value.data.submatches, 0..) |submatch, i| {
                     const match_text = try allocator.dupe(u8, submatch.match.text);
                     submatches[i] = .{
@@ -211,7 +193,7 @@ pub fn parse_ripgrep_result(result: []const u8, map: *std.StringHashMapUnmanaged
             },
             .end_step => {
                 const end = json.parseFromSlice(RgEnd, allocator, peeked_line, .{}) catch |err| {
-                    if (err == error.ParseFromValueError) {
+                    if (err == error.UnknownField) {
                         if (prev_step == .match_step) return error.UnexpectedRgValue;
                         continue;
                     }
