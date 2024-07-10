@@ -5,6 +5,7 @@ const header = @import("header.zig");
 const sidebar = @import("sidebar.zig");
 const search_input = @import("search_input.zig");
 const result_view = @import("result_view.zig");
+const selected_path_view = @import("selected_path_view.zig");
 
 const Cell = vaxis.Cell;
 const log = std.log.scoped(.app);
@@ -17,6 +18,8 @@ pub const Event = union(enum) {
     winsize: vaxis.Winsize,
     focus_in,
     dispatch_search: []const u8,
+    change_active_component: ActiveComponent,
+    change_current_selected_path: []const u8,
 };
 
 const ActiveLayout = enum {
@@ -26,11 +29,15 @@ const ActiveLayout = enum {
 const ActiveComponent = enum {
     none,
     search_input,
+    path_viewer,
 };
 
 pub const State = struct {
+    active_component: ActiveComponent = ActiveComponent.search_input,
+
     current_search_term: []const u8 = "",
-    search_result: std.StringHashMapUnmanaged([]const ripgrep.RgResult) = .{},
+    search_result: std.StringArrayHashMapUnmanaged([]const ripgrep.RgResult) = .{},
+    current_selected_path: []const u8 = "",
 
     pub fn deinit(state: *State, allocator: std.mem.Allocator) void {
         allocator.free(state.current_search_term);
@@ -48,6 +55,7 @@ pub const State = struct {
             }
             allocator.free(kv.value_ptr.*);
         }
+        state.current_selected_path = "";
     }
 };
 
@@ -57,8 +65,6 @@ pub const App = struct {
     event_loop: vaxis.Loop(Event) = undefined,
     state: State = .{},
     allocator: std.mem.Allocator,
-
-    active_component: ActiveComponent = .none,
 
     pub fn init(allocator: std.mem.Allocator) !App {
         const vx = try vaxis.init(allocator, .{});
@@ -92,7 +98,9 @@ pub const App = struct {
 
         var result_view_component = result_view.ResultView{};
 
-        app.active_component = .search_input;
+        var selected_path_view_component = selected_path_view.SelectedPathView{};
+
+        app.state.active_component = .search_input;
 
         while (true) {
             const event = app.event_loop.nextEvent();
@@ -102,10 +110,12 @@ pub const App = struct {
                     try app.vx.resize(app.allocator, app.tty.anyWriter(), ws);
                 },
                 .dispatch_search => |str| {
-                    if (app.state.search_result.size > 0) app.state.clear_search_result(app.allocator);
+                    if (app.state.search_result.count() > 0) app.state.clear_search_result(app.allocator);
                     app.allocator.free(app.state.current_search_term);
-
                     app.state.current_search_term = str;
+                    app.state.current_selected_path = "";
+
+                    selected_path_view_component.selected_idx = 0;
 
                     if (str.len != 0) {
                         app.event_loop.stop();
@@ -113,12 +123,26 @@ pub const App = struct {
                         defer app.allocator.free(result);
                         try app.event_loop.start();
                         try ripgrep.parse_ripgrep_result(result, &app.state.search_result, app.allocator);
+                        // var k_it = app.state.search_result.keyIterator();
+                        if (app.state.search_result.count() > 0) {
+                            app.state.current_selected_path = app.state.search_result.keys()[0];
+                        }
                     }
                 },
+                .change_active_component => |component| {
+                    app.state.active_component = component;
+                },
+                .change_current_selected_path => |path| {
+                    app.state.current_selected_path = path;
+                },
                 else => {
-                    switch (app.active_component) {
+                    switch (app.state.active_component) {
                         .search_input => {
                             const result = try search_input_component.handle_event(event);
+                            if (result) |ev| app.event_loop.postEvent(ev);
+                        },
+                        .path_viewer => {
+                            const result = try selected_path_view_component.handle_event(event);
                             if (result) |ev| app.event_loop.postEvent(ev);
                         },
                         else => {},
@@ -134,7 +158,7 @@ pub const App = struct {
             const header_child = try header_component.add_header_component(win, .{});
             const sidebar_child = try sidebar_component.add_sidebar_component(
                 win,
-                win.width * 30 / 100,
+                @min(50, win.width * 30 / 100),
                 .{
                     .y_off = header_child.height,
                 },
@@ -142,8 +166,7 @@ pub const App = struct {
             win.writeCell(sidebar_child.width - 1, header_child.height - 1, intersection);
 
             const search_input_child = try search_input_component.add_search_input_component(sidebar_child, .{
-                .x_off = sidebar_child.width / 2 - 50 / 2,
-                .width = .{ .limit = 50 },
+                .width = .{ .limit = sidebar_child.width * 98 / 100 },
                 .height = .{ .limit = 3 },
                 .border = .{
                     .where = .all,
@@ -155,6 +178,16 @@ pub const App = struct {
                 },
             });
             _ = search_input_child;
+
+            // divider
+
+            _ = try selected_path_view_component.add_selected_path_view_component(
+                sidebar_child,
+                &app.state,
+                .{
+                    .y_off = 9,
+                },
+            );
 
             _ = try result_view_component.add_result_view_component(
                 win,

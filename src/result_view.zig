@@ -12,21 +12,6 @@ const Segment = vaxis.Segment;
 const log = std.log.scoped(.result_view);
 
 pub const ResultView = struct {
-
-    // pub fn handle_event(search_input: *SearchInput, event: Event) !?Event {
-    //     switch (event) {
-    //         .key_press => |key| {
-    //             if (key.matches(vaxis.Key.enter, .{})) {
-    //                 return Event{
-    //                     .dispatch_search = try search_input.text_input.toOwnedSlice(),
-    //                 };
-    //             }
-    //             try search_input.text_input.update(.{ .key_press = key });
-    //         },
-    //         else => {},
-    //     }
-    //     return null;
-    // }
     line_numbers: std.ArrayListUnmanaged([]const u8) = .{},
 
     pub fn deinit(result_view: *ResultView, allocator: std.mem.Allocator) void {
@@ -49,22 +34,18 @@ pub const ResultView = struct {
         allocator: std.mem.Allocator,
     ) !vaxis.Window {
         const child = parent.child(opts);
-        // if (result.len == 0) return child;
-        // if (app_state)
-
         const mapped_result = app_state.search_result;
 
-        // const result = rg_begin.value.data.path.text;
-        var value_iterator = mapped_result.valueIterator();
+        result_view.clear_allocated_lines(allocator);
 
-        var row_offset: usize = 1;
+        if (mapped_result.get(app_state.current_selected_path)) |search_results| {
+            var row_offset: usize = 1;
 
-        while (value_iterator.next()) |value| {
-            for (value.*) |result| {
+            for (search_results) |result| {
                 const line_number_str = try std.fmt.allocPrint(allocator, "{d}: ", .{result.line_number});
                 try result_view.line_numbers.append(allocator, line_number_str);
 
-                print_line_number(&child, line_number_str, row_offset);
+                try print_line_number(&child, line_number_str, row_offset);
 
                 row_offset += try print_line(
                     &child,
@@ -78,18 +59,19 @@ pub const ResultView = struct {
         return child;
     }
 
-    fn print_line_number(container: *const vaxis.Window, line_number: []const u8, row_offset: usize) void {
-        const cell = vaxis.Cell{
-            .char = .{
-                .grapheme = line_number,
-            },
+    fn print_line_number(container: *const vaxis.Window, line_number: []const u8, row_offset: usize) !void {
+        const segment = Segment{
+            .text = line_number,
             .style = .{
                 .fg = .{
                     .index = 45,
                 },
             },
         };
-        container.writeCell(5, row_offset, cell);
+        _ = try container.printSegment(segment, .{
+            .col_offset = 5,
+            .row_offset = row_offset,
+        });
     }
 
     fn print_line(

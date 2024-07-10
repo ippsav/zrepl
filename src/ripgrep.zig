@@ -118,7 +118,11 @@ pub const RgResult = struct {
     }
 };
 
-pub fn parse_ripgrep_result(result: []const u8, map: *std.StringHashMapUnmanaged([]const RgResult), allocator: std.mem.Allocator) !void {
+pub fn parse_ripgrep_result(
+    result: []const u8,
+    map: *std.StringArrayHashMapUnmanaged([]const RgResult),
+    allocator: std.mem.Allocator,
+) !void {
     var lines = std.mem.tokenizeScalar(u8, result, '\n');
 
     const Step = enum {

@@ -28,8 +28,13 @@ pub const SearchInput = struct {
                     try search_input.text_input.insertSliceAtCursor(str);
 
                     return new_ev;
+                } else if (key.matches(vaxis.Key.tab, .{})) {
+                    return Event{
+                        .change_active_component = .path_viewer,
+                    };
+                } else {
+                    try search_input.text_input.update(.{ .key_press = key });
                 }
-                try search_input.text_input.update(.{ .key_press = key });
             },
             else => {},
         }
