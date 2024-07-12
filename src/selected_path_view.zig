@@ -5,6 +5,7 @@ const Event = @import("app.zig").Event;
 const State = @import("app.zig").State;
 
 const Segment = vaxis.Segment;
+const Cell = vaxis.Cell;
 
 const log = std.log.scoped(.result_view);
 
@@ -62,6 +63,7 @@ pub const SelectedPathView = struct {
             for (paths, 0..) |path, i| {
                 defer row_offset += 1;
                 const is_selected = i == selected_path_view.selected_idx;
+
                 const segment = Segment{
                     .text = path,
                     .style = .{
@@ -73,6 +75,19 @@ pub const SelectedPathView = struct {
                     .col_offset = 1,
                     .row_offset = row_offset,
                 });
+
+                if (is_selected) {
+                    const empty_cell = Cell{
+                        .char = .{
+                            .grapheme = " ",
+                        },
+                        .style = .{ .reverse = true },
+                    };
+
+                    for (1..parent.width - path.len - 1) |j| {
+                        child.writeCell(path.len + j, row_offset, empty_cell);
+                    }
+                }
             }
         }
 
