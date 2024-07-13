@@ -6,6 +6,7 @@ const sidebar = @import("sidebar.zig");
 const search_input = @import("search_input.zig");
 const result_view = @import("result_view.zig");
 const selected_path_view = @import("selected_path_view.zig");
+const EventDebouncer = @import("debouncer.zig");
 
 const Cell = vaxis.Cell;
 const log = std.log.scoped(.app);
@@ -17,10 +18,13 @@ pub const Event = union(enum) {
     key_press: vaxis.Key,
     winsize: vaxis.Winsize,
     focus_in,
-    dispatch_search: []const u8,
+    dispatch_search: void,
+    change_current_search_term: []const u8,
     change_active_component: ActiveComponent,
     change_current_selected_path: []const u8,
 };
+
+pub const EventLoop = vaxis.Loop(Event);
 
 const ActiveLayout = enum {
     main,
@@ -62,7 +66,7 @@ pub const State = struct {
 pub const App = struct {
     vx: vaxis.Vaxis,
     tty: vaxis.Tty,
-    event_loop: vaxis.Loop(Event) = undefined,
+    event_loop: EventLoop = undefined,
     state: State = .{},
     allocator: std.mem.Allocator,
 
@@ -102,32 +106,50 @@ pub const App = struct {
 
         app.state.active_component = .search_input;
 
+        var event_debouncer = EventDebouncer.init(
+            400 * std.time.ns_per_ms,
+            Event{
+                .dispatch_search = {},
+            },
+        );
+
+        _ = try std.Thread.spawn(.{}, EventDebouncer.run, .{ &event_debouncer, &app.event_loop });
+
         while (true) {
             const event = app.event_loop.nextEvent();
-            if (event == .key_press and event.key_press.codepoint == 'c' and event.key_press.mods.ctrl) break;
+            if (event == .key_press and event.key_press.codepoint == 'c' and event.key_press.mods.ctrl) {
+                event_debouncer.mutex.lock();
+                defer event_debouncer.mutex.unlock();
+                event_debouncer.should_quit = true;
+                break;
+            }
             switch (event) {
                 .winsize => |ws| {
                     try app.vx.resize(app.allocator, app.tty.anyWriter(), ws);
                 },
-                .dispatch_search => |str| {
+                .dispatch_search => {
                     if (app.state.search_result.count() > 0) app.state.clear_search_result(app.allocator);
-                    app.allocator.free(app.state.current_search_term);
-                    app.state.current_search_term = str;
                     app.state.current_selected_path = "";
 
                     selected_path_view_component.selected_idx = 0;
 
-                    if (str.len != 0) {
+                    if (app.state.current_search_term.len != 0) {
                         app.event_loop.stop();
                         const result = try ripgrep.ripgrep_term(app.state.current_search_term, app.allocator);
                         defer app.allocator.free(result);
                         try app.event_loop.start();
                         try ripgrep.parse_ripgrep_result(result, &app.state.search_result, app.allocator);
-                        // var k_it = app.state.search_result.keyIterator();
                         if (app.state.search_result.count() > 0) {
                             app.state.current_selected_path = app.state.search_result.keys()[0];
                         }
                     }
+                },
+                .change_current_search_term => |str| {
+                    event_debouncer.mutex.lock();
+                    defer event_debouncer.mutex.unlock();
+                    event_debouncer.cond.signal();
+                    app.allocator.free(app.state.current_search_term);
+                    app.state.current_search_term = str;
                 },
                 .change_active_component => |component| {
                     app.state.active_component = component;

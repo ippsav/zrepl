@@ -20,20 +20,20 @@ pub const SearchInput = struct {
     pub fn handle_event(search_input: *SearchInput, event: Event) !?Event {
         switch (event) {
             .key_press => |key| {
-                if (key.matches(vaxis.Key.enter, .{})) {
-                    const str = try search_input.text_input.toOwnedSlice();
-                    const new_ev = Event{
-                        .dispatch_search = str,
-                    };
-                    try search_input.text_input.insertSliceAtCursor(str);
-
-                    return new_ev;
-                } else if (key.matches(vaxis.Key.tab, .{})) {
+                if (key.matches(vaxis.Key.tab, .{})) {
                     return Event{
                         .change_active_component = .path_viewer,
                     };
                 } else {
                     try search_input.text_input.update(.{ .key_press = key });
+
+                    const str = try search_input.text_input.toOwnedSlice();
+                    const new_ev = Event{
+                        .change_current_search_term = str,
+                    };
+                    try search_input.text_input.insertSliceAtCursor(str);
+
+                    return new_ev;
                 }
             },
             else => {},
