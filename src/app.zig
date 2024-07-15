@@ -54,7 +54,7 @@ pub const State = struct {
         var it = state.search_result.iterator();
         while (it.next()) |kv| {
             allocator.free(kv.key_ptr.*);
-            for (kv.value_ptr.*) |*result| {
+            for (kv.value_ptr.*) |result| {
                 result.deinit(allocator);
             }
             allocator.free(kv.value_ptr.*);
@@ -106,21 +106,26 @@ pub const App = struct {
 
         app.state.active_component = .search_input;
 
-        var event_debouncer = EventDebouncer.init(
+        var search_debouncer = EventDebouncer.init(
             400 * std.time.ns_per_ms,
             Event{
                 .dispatch_search = {},
             },
         );
 
-        _ = try std.Thread.spawn(.{}, EventDebouncer.run, .{ &event_debouncer, &app.event_loop });
+        _ = try std.Thread.spawn(
+            .{},
+            EventDebouncer.run,
+            .{
+                &search_debouncer,
+                &app.event_loop,
+            },
+        );
 
         while (true) {
             const event = app.event_loop.nextEvent();
             if (event == .key_press and event.key_press.codepoint == 'c' and event.key_press.mods.ctrl) {
-                event_debouncer.mutex.lock();
-                defer event_debouncer.mutex.unlock();
-                event_debouncer.should_quit = true;
+                search_debouncer.quit();
                 break;
             }
             switch (event) {
@@ -138,16 +143,18 @@ pub const App = struct {
                         const result = try ripgrep.ripgrep_term(app.state.current_search_term, app.allocator);
                         defer app.allocator.free(result);
                         try app.event_loop.start();
-                        try ripgrep.parse_ripgrep_result(result, &app.state.search_result, app.allocator);
+                        try ripgrep.parse_ripgrep_result(
+                            result,
+                            &app.state.search_result,
+                            app.allocator,
+                        );
                         if (app.state.search_result.count() > 0) {
                             app.state.current_selected_path = app.state.search_result.keys()[0];
                         }
                     }
                 },
                 .change_current_search_term => |str| {
-                    event_debouncer.mutex.lock();
-                    defer event_debouncer.mutex.unlock();
-                    event_debouncer.cond.signal();
+                    search_debouncer.signal();
                     app.allocator.free(app.state.current_search_term);
                     app.state.current_search_term = str;
                 },

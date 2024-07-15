@@ -45,3 +45,16 @@ pub fn run(ed: *EventDebouncer, event_loop: *EventLoop) !void {
         }
     }
 }
+
+pub fn signal(ed: *EventDebouncer) void {
+    ed.mutex.lock();
+    defer ed.mutex.unlock();
+    ed.cond.signal();
+}
+
+pub fn quit(ed: *EventDebouncer) void {
+    ed.mutex.lock();
+    defer ed.mutex.unlock();
+    ed.should_quit = true;
+    ed.cond.signal();
+}
