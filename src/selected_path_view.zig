@@ -13,6 +13,19 @@ pub const SelectedPathView = struct {
     file_paths: ?[]const []const u8 = null,
     selected_idx: usize = 0,
 
+    /// Handles events for the SelectedPathView component.
+    ///
+    /// This function processes key press events to navigate through the file paths
+    /// or change the active component.
+    ///
+    /// Parameters:
+    ///   - event: The Event to be handled.
+    ///
+    /// Returns:
+    ///   - An optional Event, which can be:
+    ///     - Event.change_active_component: When Tab is pressed.
+    ///     - Event.change_current_selected_path: When 'j' or 'k' is pressed to navigate.
+    ///     - null: If no relevant event is processed.
     pub fn handle_event(selected_path_view: *SelectedPathView, event: Event) !?Event {
         switch (event) {
             .key_press => |key| {

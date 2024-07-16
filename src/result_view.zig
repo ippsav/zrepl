@@ -74,6 +74,15 @@ pub const ResultView = struct {
         });
     }
 
+    /// Prints a single line of search results, handling text wrapping and highlighting matches.
+    ///
+    /// Parameters:
+    /// - container: The window to print the line in
+    /// - result: The search result containing the line and submatches
+    /// - offset: The starting row offset for printing
+    /// - allocator: Memory allocator for temporary allocations
+    ///
+    /// Returns: The number of lines written (including separators)
     fn print_line(
         container: *const vaxis.Window,
         result: *const RgResult,
@@ -129,6 +138,16 @@ pub const ResultView = struct {
         return lines_written + 1;
     }
 
+    /// Populates an ArrayList of Segments based on the submatches within a given range of text.
+    ///
+    /// Parameters:
+    /// - segments: The ArrayList to populate with Segments
+    /// - submatches: Slice of Submatch structs containing match information
+    /// - str: The full text string
+    /// - offset: Starting offset in the string
+    /// - limit: Ending offset in the string
+    ///
+    /// Returns: The number of submatches processed
     fn populate_segments(
         segments: *std.ArrayList(Segment),
         submatches: []const Submatch,
