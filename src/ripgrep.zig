@@ -139,9 +139,7 @@ pub fn parse_ripgrep_result(
     var rg_results = std.ArrayListUnmanaged(RgResult){};
     defer rg_results.deinit(allocator);
 
-    var def: usize = 0;
     while (lines.peek()) |peeked_line| {
-        def += 1;
         switch (curr_step) {
             .begin_step => {
                 const begin = json.parseFromSlice(RgBegin, allocator, peeked_line, .{}) catch |err| {
@@ -205,7 +203,7 @@ pub fn parse_ripgrep_result(
                 };
                 defer end.deinit();
                 const results = try rg_results.toOwnedSlice(allocator);
-                rg_results.clearAndFree(allocator);
+                rg_results.clearRetainingCapacity();
                 if (curr_path) |path| {
                     try map.put(allocator, path, results);
                     curr_path = null;
@@ -214,7 +212,7 @@ pub fn parse_ripgrep_result(
                 curr_step = .begin_step;
             },
             .summary_step => {
-                // We don't summary for now
+                // We don't need summary for now
                 break;
             },
         }
@@ -222,8 +220,3 @@ pub fn parse_ripgrep_result(
         _ = lines.next();
     }
 }
-// Example of a query
-// {"type":"begin","data":{"path":{"text":"src/result_view.zig"}}}
-// {"type":"match","data":{"path":{"text":"src/result_view.zig"},"lines":{"text":"        var remaining = str[0..str.len];\n"},"line_number":97,"absolute_offset":3005,"submatches":[{"match":{"text":"main"},"start":14,"end":18}]}}
-// {"type":"match","data":{"path":{"text":"src/result_view.zig"},"lines":{"text":"        while (remaining.len > 0) {\n"},"line_number":100,"absolute_offset":3085,"submatches":[{"match":{"text":"main"},"start":17,"end":21}]}}
-// {"type":"match","data":{"path":{"text":"src/result_view.zig"},"lines":{"text":"            const line_len: usize = @min(remaining.len, container.width - 15);\n"},"line_number":101,"absolute_offset":3121,"submatches":[{"match":{"text":"main"},"start":43,"end":47}]}}
